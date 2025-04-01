@@ -863,13 +863,18 @@ int ff_vk_alloc_mem(FFVulkanContext *s, VkMemoryRequirements *req,
     /* The vulkan spec requires memory types to be sorted in the "optimal"
      * order, so the first matching type we find will be the best/fastest one */
     for (int i = 0; i < s->mprops.memoryTypeCount; i++) {
+        const VkMemoryType *type = &s->mprops.memoryTypes[i];
         /* The memory type must be supported by the requirements (bitfield) */
         if (!(req->memoryTypeBits & (1 << i)))
             continue;
 
         /* The memory type flags must include our properties */
         if ((req_flags != UINT32_MAX) &&
-            ((s->mprops.memoryTypes[i].propertyFlags & req_flags) != req_flags))
+            ((type->propertyFlags & req_flags) != req_flags))
+            continue;
+
+        /* The memory type must be large enough */
+        if (req->size > s->mprops.memoryHeaps[type->heapIndex].size)
             continue;
 
         /* Found a suitable memory type */
@@ -887,8 +892,11 @@ int ff_vk_alloc_mem(FFVulkanContext *s, VkMemoryRequirements *req,
 
     ret = vk->AllocateMemory(s->hwctx->act_dev, &alloc_info,
                              s->hwctx->alloc, mem);
-    if (ret != VK_SUCCESS)
+    if (ret != VK_SUCCESS) {
+        av_log(s, AV_LOG_ERROR, "Failed to allocate memory: %s\n",
+               ff_vk_ret2str(ret));
         return AVERROR(ENOMEM);
+    }
 
     if (mem_flags)
         *mem_flags |= s->mprops.memoryTypes[index].propertyFlags;

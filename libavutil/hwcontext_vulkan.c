@@ -2015,64 +2015,6 @@ static int vulkan_frames_get_constraints(AVHWDeviceContext *ctx,
     return 0;
 }
 
-static int alloc_mem(AVHWDeviceContext *ctx, VkMemoryRequirements *req,
-                     VkMemoryPropertyFlagBits req_flags, const void *alloc_extension,
-                     VkMemoryPropertyFlagBits *mem_flags, VkDeviceMemory *mem)
-{
-    VkResult ret;
-    int index = -1;
-    VulkanDevicePriv *p = ctx->hwctx;
-    FFVulkanFunctions *vk = &p->vkctx.vkfn;
-    AVVulkanDeviceContext *dev_hwctx = &p->p;
-    VkMemoryAllocateInfo alloc_info = {
-        .sType          = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .pNext          = alloc_extension,
-        .allocationSize = req->size,
-    };
-
-    /* The vulkan spec requires memory types to be sorted in the "optimal"
-     * order, so the first matching type we find will be the best/fastest one */
-    for (int i = 0; i < p->mprops.memoryTypeCount; i++) {
-        const VkMemoryType *type = &p->mprops.memoryTypes[i];
-
-        /* The memory type must be supported by the requirements (bitfield) */
-        if (!(req->memoryTypeBits & (1 << i)))
-            continue;
-
-        /* The memory type flags must include our properties */
-        if ((type->propertyFlags & req_flags) != req_flags)
-            continue;
-
-        /* The memory type must be large enough */
-        if (req->size > p->mprops.memoryHeaps[type->heapIndex].size)
-            continue;
-
-        /* Found a suitable memory type */
-        index = i;
-        break;
-    }
-
-    if (index < 0) {
-        av_log(ctx, AV_LOG_ERROR, "No memory type found for flags 0x%x\n",
-               req_flags);
-        return AVERROR(EINVAL);
-    }
-
-    alloc_info.memoryTypeIndex = index;
-
-    ret = vk->AllocateMemory(dev_hwctx->act_dev, &alloc_info,
-                             dev_hwctx->alloc, mem);
-    if (ret != VK_SUCCESS) {
-        av_log(ctx, AV_LOG_ERROR, "Failed to allocate memory: %s\n",
-               ff_vk_ret2str(ret));
-        return AVERROR(ENOMEM);
-    }
-
-    *mem_flags |= p->mprops.memoryTypes[index].propertyFlags;
-
-    return 0;
-}
-
 static void vulkan_free_internal(AVVkFrame *f)
 {
     av_unused AVVkFrameInternal *internal = f->internal;
@@ -2190,12 +2132,12 @@ static int alloc_bind_mem(AVHWFramesContext *hwfc, AVVkFrame *f,
             ded_alloc.image = f->img[img_cnt];
 
         /* Allocate memory */
-        if ((err = alloc_mem(ctx, &req.memoryRequirements,
-                             f->tiling == VK_IMAGE_TILING_LINEAR ?
-                             VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT :
-                             VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                             use_ded_mem ? &ded_alloc : (void *)ded_alloc.pNext,
-                             &f->flags, &f->mem[img_cnt])))
+        if ((err = ff_vk_alloc_mem(&p->vkctx, &req.memoryRequirements,
+                                   f->tiling == VK_IMAGE_TILING_LINEAR ?
+                                   VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT :
+                                   VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                                   use_ded_mem ? &ded_alloc : (void *)ded_alloc.pNext,
+                                   &f->flags, &f->mem[img_cnt])))
             return err;
 
         f->size[img_cnt] = req.memoryRequirements.size;
@@ -3058,12 +3000,12 @@ static int vulkan_map_from_drm_frame_desc(AVHWFramesContext *hwfc, AVVkFrame **f
         /* Only a single bit must be set, not a range, and it must match */
         req2.memoryRequirements.memoryTypeBits = fdmp.memoryTypeBits;
 
-        err = alloc_mem(ctx, &req2.memoryRequirements,
-                        VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-                        (ded_req.prefersDedicatedAllocation ||
-                         ded_req.requiresDedicatedAllocation) ?
-                            &ded_alloc : ded_alloc.pNext,
-                        &f->flags, &f->mem[i]);
+        err = ff_vk_alloc_mem(&p->vkctx, &req2.memoryRequirements,
+                              VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+                              (ded_req.prefersDedicatedAllocation ||
+                               ded_req.requiresDedicatedAllocation) ?
+                                  &ded_alloc : ded_alloc.pNext,
+                              &f->flags, &f->mem[i]);
         if (err) {
             close(idesc.fd);
             return err;
