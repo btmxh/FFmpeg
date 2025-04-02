@@ -3751,7 +3751,7 @@ static int copy_buffer_data(AVHWFramesContext *hwfc, AVBufferRef *buf,
         .sType  = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
         .memory = vkbuf->mem.memory,
         .offset = vkbuf->mem.offset,
-        .size   = VK_WHOLE_SIZE,
+        .size   = vkbuf->size,
     };
 
     if (!(vkbuf->flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT) && !upload) {

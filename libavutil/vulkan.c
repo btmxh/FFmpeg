@@ -1059,7 +1059,7 @@ int ff_vk_map_buffers(FFVulkanContext *s, FFVkBuffer **buf, uint8_t *mem[],
     for (int i = 0; i < nb_buffers; i++) {
         void *dst;
         ret = vk->MapMemory(s->hwctx->act_dev, buf[i]->mem.memory,
-                            buf[i]->mem.offset, VK_WHOLE_SIZE, 0, &dst);
+                            buf[i]->mem.offset, buf[i]->size, 0, &dst);
         if (ret != VK_SUCCESS) {
             av_log(s, AV_LOG_ERROR, "Failed to map buffer memory: %s\n",
                    ff_vk_ret2str(ret));
@@ -1076,7 +1076,7 @@ int ff_vk_map_buffers(FFVulkanContext *s, FFVkBuffer **buf, uint8_t *mem[],
             .sType  = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
             .memory = buf[i]->mem.memory,
             .offset = buf[i]->mem.offset,
-            .size   = VK_WHOLE_SIZE,
+            .size   = buf[i]->size,
         };
         if (buf[i]->flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
             continue;
@@ -1111,7 +1111,7 @@ int ff_vk_unmap_buffers(FFVulkanContext *s, FFVkBuffer **buf, int nb_buffers,
                 .sType  = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
                 .memory = buf[i]->mem.memory,
                 .offset = buf[i]->mem.offset,
-                .size   = VK_WHOLE_SIZE,
+                .size   = buf[i]->size,
             };
             if (buf[i]->flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
                 continue;
