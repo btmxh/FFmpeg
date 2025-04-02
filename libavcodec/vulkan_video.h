@@ -31,7 +31,7 @@
 
 typedef struct FFVkVideoSession {
     VkVideoSessionKHR session;
-    VkDeviceMemory *mem;
+    AVVulkanDeviceMemory *mem;
     uint32_t nb_mem;
 
     VkSamplerYcbcrConversion yuv_sampler;

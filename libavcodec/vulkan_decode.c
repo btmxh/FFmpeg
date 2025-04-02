@@ -376,8 +376,8 @@ int ff_vk_decode_frame(AVCodecContext *avctx,
     if (!(sd_buf->flags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
         VkMappedMemoryRange flush_buf = {
             .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
-            .memory = sd_buf->mem,
-            .offset = 0,
+            .memory = sd_buf->mem.memory,
+            .offset = sd_buf->mem.offset,
             .size = FFALIGN(vp->slices_size,
                             ctx->s.props.properties.limits.nonCoherentAtomSize),
         };

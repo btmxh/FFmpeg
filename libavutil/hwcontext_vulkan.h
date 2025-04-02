@@ -45,6 +45,15 @@ typedef struct AVVulkanDeviceQueueFamily {
 } AVVulkanDeviceQueueFamily;
 
 /**
+ * A memory region on the Vulkan device
+ */
+typedef struct {
+  VkDeviceMemory memory;
+  VkDeviceSize offset;
+  void* user;
+} AVVulkanDeviceMemory;
+
+/**
  * @file
  * API-specific header for AV_HWDEVICE_TYPE_VULKAN.
  *
@@ -187,6 +196,30 @@ typedef struct AVVulkanDeviceContext {
      */
     AVVulkanDeviceQueueFamily qf[64];
     int nb_qf;
+
+    /**
+     * Custom on-device memory allocator. This will be used instead of
+     * vkAllocateMemory for on-device memory allocation.
+     *
+     * If allocator.allocate_memory is NULL, a default implementation using
+     * vkAllocateMemory is used.
+     */
+    int (*memory_alloc_cb)(AVHWDeviceContext *ctx, VkMemoryRequirements *req,
+                           VkMemoryPropertyFlagBits req_flags,
+                           void *alloc_extension,
+                           VkMemoryPropertyFlagBits *mem_flags,
+                           AVVulkanDeviceMemory *out_mem);
+
+    /**
+     * Custom on-device memory deallocator. This will be used instead of
+     * vkFreeMemory for on-device memory deallocation.
+     *
+     * If allocator.deallocate_memory is NULL, a default implementation using
+     * vkFreeMemory is used. Compatibility between memory_alloc_cb and
+     * memory_free_cb must be ensured by the caller.
+     */
+    void (*memory_free_cb)(AVHWDeviceContext *ctx,
+                           const AVVulkanDeviceMemory *mem);
 } AVVulkanDeviceContext;
 
 /**

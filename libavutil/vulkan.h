@@ -94,7 +94,7 @@ typedef struct FFVulkanDescriptorSetBinding {
 
 typedef struct FFVkBuffer {
     VkBuffer buf;
-    VkDeviceMemory mem;
+    AVVulkanDeviceMemory mem;
     VkMemoryPropertyFlagBits flags;
     size_t size;
     VkDeviceAddress address;
@@ -426,7 +426,8 @@ void ff_vk_frame_barrier(FFVulkanContext *s, FFVkExecContext *e,
  */
 int ff_vk_alloc_mem(FFVulkanContext *s, VkMemoryRequirements *req,
                     VkMemoryPropertyFlagBits req_flags, void *alloc_extension,
-                    VkMemoryPropertyFlagBits *mem_flags, VkDeviceMemory *mem);
+                    VkMemoryPropertyFlagBits *mem_flags, AVVulkanDeviceMemory *mem);
+void ff_vk_free_mem(FFVulkanContext *s, const AVVulkanDeviceMemory *mem);
 int ff_vk_create_buf(FFVulkanContext *s, FFVkBuffer *buf, size_t size,
                      void *pNext, void *alloc_pNext,
                      VkBufferUsageFlags usage, VkMemoryPropertyFlagBits flags);

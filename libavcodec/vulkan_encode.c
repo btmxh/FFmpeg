@@ -506,8 +506,8 @@ static int vulkan_encode_output(AVCodecContext *avctx,
 
         invalidate_buf = (VkMappedMemoryRange) {
             .sType = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
-            .memory = sd_buf->mem,
-            .offset = offs,
+            .memory = sd_buf->mem.memory,
+            .offset = sd_buf->mem.offset + offs,
             .size = VK_WHOLE_SIZE,
         };
 

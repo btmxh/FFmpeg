@@ -72,6 +72,8 @@
 #define CHECK_CU(x) FF_CUDA_CHECK_DL(cuda_cu, cu, x)
 #endif
 
+#include <vk_mem_alloc.h>
+
 typedef struct VulkanDevicePriv {
     /**
      * The public AVVulkanDeviceContext. See hwcontext_vulkan.h for it.
@@ -2100,6 +2102,7 @@ static int alloc_bind_mem(AVHWFramesContext *hwfc, AVVkFrame *f,
     AVVulkanDeviceContext *hwctx = &p->p;
     FFVulkanFunctions *vk = &p->vkctx.vkfn;
     VkBindImageMemoryInfo bind_info[AV_NUM_DATA_POINTERS] = { { 0 } };
+    AVVulkanDeviceMemory img_mem[AV_NUM_DATA_POINTERS];
 
     while (f->img[img_cnt]) {
         int use_ded_mem;
@@ -2137,9 +2140,11 @@ static int alloc_bind_mem(AVHWFramesContext *hwfc, AVVkFrame *f,
                                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT :
                                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                                    use_ded_mem ? &ded_alloc : (void *)ded_alloc.pNext,
-                                   &f->flags, &f->mem[img_cnt])))
+                                   &f->flags, &img_mem[img_cnt])))
             return err;
 
+        f->mem[img_cnt] = img_mem[img_cnt].memory;
+        f->offset[img_cnt] = img_mem[img_cnt].offset;
         f->size[img_cnt] = req.memoryRequirements.size;
         bind_info[img_cnt].sType  = VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO;
         bind_info[img_cnt].image  = f->img[img_cnt];
@@ -2800,6 +2805,7 @@ static int vulkan_map_from_drm_frame_desc(AVHWFramesContext *hwfc, AVVkFrame **f
     const AVDRMFrameDescriptor *desc = (AVDRMFrameDescriptor *)src->data[0];
     VkBindImageMemoryInfo bind_info[AV_DRM_MAX_PLANES];
     VkBindImagePlaneMemoryInfo plane_info[AV_DRM_MAX_PLANES];
+    AVVulkanDeviceMemory img_mem[AV_DRM_MAX_PLANES];
 
     for (int i = 0; i < desc->nb_layers; i++) {
         if (drm_to_vulkan_fmt(desc->layers[i].format) == VK_FORMAT_UNDEFINED) {
@@ -3005,12 +3011,14 @@ static int vulkan_map_from_drm_frame_desc(AVHWFramesContext *hwfc, AVVkFrame **f
                               (ded_req.prefersDedicatedAllocation ||
                                ded_req.requiresDedicatedAllocation) ?
                                   &ded_alloc : ded_alloc.pNext,
-                              &f->flags, &f->mem[i]);
+                              &f->flags, &img_mem[i]);
         if (err) {
             close(idesc.fd);
             return err;
         }
 
+        f->mem[i] = img_mem[i].memory;
+        f->offset[i] = img_mem[i].offset;
         f->size[i] = req2.memoryRequirements.size;
     }
 
@@ -3741,7 +3749,8 @@ static int copy_buffer_data(AVHWFramesContext *hwfc, AVBufferRef *buf,
 
     const VkMappedMemoryRange flush_info = {
         .sType  = VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
-        .memory = vkbuf->mem,
+        .memory = vkbuf->mem.memory,
+        .offset = vkbuf->mem.offset,
         .size   = VK_WHOLE_SIZE,
     };
 
@@ -3855,13 +3864,13 @@ static int create_mapped_buffer(AVHWFramesContext *hwfc,
 
     ret = vk->CreateBuffer(hwctx->act_dev, &buf_spawn, hwctx->alloc, &vkb->buf);
     if (ret != VK_SUCCESS) {
-        vk->FreeMemory(hwctx->act_dev, vkb->mem, hwctx->alloc);
+        ff_vk_free_mem(&p->vkctx, &vkb->mem);
         return AVERROR_EXTERNAL;
     }
 
-    ret = vk->BindBufferMemory(hwctx->act_dev, vkb->buf, vkb->mem, 0);
+    ret = vk->BindBufferMemory(hwctx->act_dev, vkb->buf, vkb->mem.memory, vkb->mem.offset);
     if (ret != VK_SUCCESS) {
-        vk->FreeMemory(hwctx->act_dev, vkb->mem, hwctx->alloc);
+        ff_vk_free_mem(&p->vkctx, &vkb->mem);
         vk->DestroyBuffer(hwctx->act_dev, vkb->buf, hwctx->alloc);
         return AVERROR_EXTERNAL;
     }

@@ -335,7 +335,7 @@ av_cold void ff_vk_video_common_uninit(FFVulkanContext *s,
 
     if (common->nb_mem && common->mem)
         for (int i = 0; i < common->nb_mem; i++)
-            vk->FreeMemory(s->hwctx->act_dev, common->mem[i], s->hwctx->alloc);
+            ff_vk_free_mem(s, &common->mem[i]);
 
     av_freep(&common->mem);
 
@@ -440,9 +440,9 @@ av_cold int ff_vk_video_common_init(AVCodecContext *avctx, FFVulkanContext *s,
 
         bind_mem[i] = (VkBindVideoSessionMemoryInfoKHR) {
             .sType = VK_STRUCTURE_TYPE_BIND_VIDEO_SESSION_MEMORY_INFO_KHR,
-            .memory = common->mem[i],
+            .memory = common->mem[i].memory,
             .memoryBindIndex = mem[i].memoryBindIndex,
-            .memoryOffset = 0,
+            .memoryOffset = common->mem[i].offset,
             .memorySize = mem[i].memoryRequirements.size,
         };
 
