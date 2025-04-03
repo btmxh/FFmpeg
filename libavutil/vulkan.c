@@ -925,6 +925,44 @@ void ff_vk_free_mem(FFVulkanContext *s, const AVVulkanDeviceMemory *mem)
     vk->FreeMemory(s->hwctx->act_dev, mem->memory, s->hwctx->alloc);
 }
 
+int ff_vk_map_mem(FFVulkanContext *s, const AVVulkanDeviceMemory *mem,
+                  size_t size, void** data)
+{
+    FFVulkanFunctions *vk = &s->vkfn;
+    VkResult ret;
+
+    if (s->hwctx->memory_map_cb)
+        return s->hwctx->memory_map_cb(s->device, mem, size, data);
+
+    // memory allocated by the default implementation always belongs to its own
+    // VkDeviceMemory
+    av_assert0(mem->offset == 0);
+    ret = vk->MapMemory(s->hwctx->act_dev, mem->memory, 0, size, 0, data);
+    if(ret != VK_SUCCESS) {
+        av_log(s, AV_LOG_ERROR, "Failed to map buffer memory: %s\n",
+               ff_vk_ret2str(ret));
+        return AVERROR_EXTERNAL;
+    }
+
+    return 0;
+}
+
+void ff_vk_unmap_mem(FFVulkanContext *s, const AVVulkanDeviceMemory *mem)
+{
+    FFVulkanFunctions *vk = &s->vkfn;
+
+    if (s->hwctx->memory_unmap_cb) {
+        s->hwctx->memory_unmap_cb(s->device, mem);
+        return;
+    }
+
+    // memory allocated by the default implementation always belongs to its own
+    // VkDeviceMemory
+    av_assert0(mem->offset == 0);
+
+    vk->UnmapMemory(s->hwctx->act_dev, mem->memory);
+}
+
 int ff_vk_create_buf(FFVulkanContext *s, FFVkBuffer *buf, size_t size,
                      void *pNext, void *alloc_pNext,
                      VkBufferUsageFlags usage, VkMemoryPropertyFlagBits flags)
@@ -1054,17 +1092,13 @@ int ff_vk_map_buffers(FFVulkanContext *s, FFVkBuffer **buf, uint8_t *mem[],
     VkResult ret;
     FFVulkanFunctions *vk = &s->vkfn;
     VkMappedMemoryRange inval_list[64];
-    int inval_count = 0;
+    int inval_count = 0, err;
 
     for (int i = 0; i < nb_buffers; i++) {
         void *dst;
-        ret = vk->MapMemory(s->hwctx->act_dev, buf[i]->mem.memory,
-                            buf[i]->mem.offset, buf[i]->size, 0, &dst);
-        if (ret != VK_SUCCESS) {
-            av_log(s, AV_LOG_ERROR, "Failed to map buffer memory: %s\n",
-                   ff_vk_ret2str(ret));
-            return AVERROR_EXTERNAL;
-        }
+        err = ff_vk_map_mem(s, &buf[i]->mem, buf[i]->size, &dst);
+        if (err)
+            return err;
         mem[i] = dst;
     }
 
@@ -1130,7 +1164,7 @@ int ff_vk_unmap_buffers(FFVulkanContext *s, FFVkBuffer **buf, int nb_buffers,
     }
 
     for (int i = 0; i < nb_buffers; i++)
-        vk->UnmapMemory(s->hwctx->act_dev, buf[i]->mem.memory);
+        ff_vk_unmap_mem(s, &buf[i]->mem);
 
     return err;
 }

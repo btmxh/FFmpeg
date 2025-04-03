@@ -220,6 +220,19 @@ typedef struct AVVulkanDeviceContext {
      */
     void (*memory_free_cb)(AVHWDeviceContext *ctx,
                            const AVVulkanDeviceMemory *mem);
+
+    /**
+     * Custom memory-mapping function
+     */
+    int (*memory_map_cb)(AVHWDeviceContext *ctx,
+                         const AVVulkanDeviceMemory *mem, size_t size,
+                         void **data);
+
+    /**
+     * Custom memory-unmapping function
+     */
+    void (*memory_unmap_cb)(AVHWDeviceContext *ctx,
+                            const AVVulkanDeviceMemory *mem);
 } AVVulkanDeviceContext;
 
 /**
@@ -350,7 +363,7 @@ struct AVVkFrame {
      * In case of having multiple VkImages, but one memory, the offset field
      * will indicate the bound offset for each image.
      */
-    VkDeviceMemory mem[AV_NUM_DATA_POINTERS];
+    AVVulkanDeviceMemory mem[AV_NUM_DATA_POINTERS];
     size_t size[AV_NUM_DATA_POINTERS];
 
     /**
@@ -384,12 +397,6 @@ struct AVVkFrame {
      * Internal data.
      */
     struct AVVkFrameInternal *internal;
-
-    /**
-     * Describes the binding offset of each image to the VkDeviceMemory.
-     * One per VkImage.
-     */
-    ptrdiff_t offset[AV_NUM_DATA_POINTERS];
 
     /**
      * Queue family of the images. Must be VK_QUEUE_FAMILY_IGNORED if

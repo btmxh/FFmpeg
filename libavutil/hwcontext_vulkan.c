@@ -2080,7 +2080,7 @@ static void vulkan_frame_free(AVHWFramesContext *hwfc, AVVkFrame *f)
 
     for (int i = 0; i < nb_images; i++) {
         vk->DestroyImage(hwctx->act_dev,     f->img[i], hwctx->alloc);
-        vk->FreeMemory(hwctx->act_dev,       f->mem[i], hwctx->alloc);
+        ff_vk_free_mem(&p->vkctx, &f->mem[i]);
         vk->DestroySemaphore(hwctx->act_dev, f->sem[i], hwctx->alloc);
     }
 
@@ -2102,7 +2102,6 @@ static int alloc_bind_mem(AVHWFramesContext *hwfc, AVVkFrame *f,
     AVVulkanDeviceContext *hwctx = &p->p;
     FFVulkanFunctions *vk = &p->vkctx.vkfn;
     VkBindImageMemoryInfo bind_info[AV_NUM_DATA_POINTERS] = { { 0 } };
-    AVVulkanDeviceMemory img_mem[AV_NUM_DATA_POINTERS];
 
     while (f->img[img_cnt]) {
         int use_ded_mem;
@@ -2140,15 +2139,14 @@ static int alloc_bind_mem(AVHWFramesContext *hwfc, AVVkFrame *f,
                                    VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT :
                                    VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
                                    use_ded_mem ? &ded_alloc : (void *)ded_alloc.pNext,
-                                   &f->flags, &img_mem[img_cnt])))
+                                   &f->flags, &f->mem[img_cnt])))
             return err;
 
-        f->mem[img_cnt] = img_mem[img_cnt].memory;
-        f->offset[img_cnt] = img_mem[img_cnt].offset;
         f->size[img_cnt] = req.memoryRequirements.size;
         bind_info[img_cnt].sType  = VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO;
         bind_info[img_cnt].image  = f->img[img_cnt];
-        bind_info[img_cnt].memory = f->mem[img_cnt];
+        bind_info[img_cnt].memory = f->mem[img_cnt].memory;
+        bind_info[img_cnt].memoryOffset = f->mem[img_cnt].offset;
 
         img_cnt++;
     }
@@ -2805,7 +2803,6 @@ static int vulkan_map_from_drm_frame_desc(AVHWFramesContext *hwfc, AVVkFrame **f
     const AVDRMFrameDescriptor *desc = (AVDRMFrameDescriptor *)src->data[0];
     VkBindImageMemoryInfo bind_info[AV_DRM_MAX_PLANES];
     VkBindImagePlaneMemoryInfo plane_info[AV_DRM_MAX_PLANES];
-    AVVulkanDeviceMemory img_mem[AV_DRM_MAX_PLANES];
 
     for (int i = 0; i < desc->nb_layers; i++) {
         if (drm_to_vulkan_fmt(desc->layers[i].format) == VK_FORMAT_UNDEFINED) {
@@ -3011,14 +3008,12 @@ static int vulkan_map_from_drm_frame_desc(AVHWFramesContext *hwfc, AVVkFrame **f
                               (ded_req.prefersDedicatedAllocation ||
                                ded_req.requiresDedicatedAllocation) ?
                                   &ded_alloc : ded_alloc.pNext,
-                              &f->flags, &img_mem[i]);
+                              &f->flags, &f->mem[i]);
         if (err) {
             close(idesc.fd);
             return err;
         }
 
-        f->mem[i] = img_mem[i].memory;
-        f->offset[i] = img_mem[i].offset;
         f->size[i] = req2.memoryRequirements.size;
     }
 
@@ -3036,10 +3031,10 @@ static int vulkan_map_from_drm_frame_desc(AVHWFramesContext *hwfc, AVVkFrame **f
             bind_info[bind_counts].sType  = VK_STRUCTURE_TYPE_BIND_IMAGE_MEMORY_INFO;
             bind_info[bind_counts].pNext  = planes > 1 ? &plane_info[bind_counts] : NULL;
             bind_info[bind_counts].image  = f->img[i];
-            bind_info[bind_counts].memory = f->mem[i];
+            bind_info[bind_counts].memory = f->mem[i].memory;
 
             /* Offset is already signalled via pPlaneLayouts above */
-            bind_info[bind_counts].memoryOffset = 0;
+            bind_info[bind_counts].memoryOffset = f->mem[i].offset;
 
             bind_counts++;
         }
@@ -3346,7 +3341,7 @@ static int vulkan_export_to_cuda(AVHWFramesContext *hwfc,
             };
             VkMemoryGetFdInfoKHR export_info = {
                 .sType      = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR,
-                .memory     = dst_f->mem[i],
+                .memory     = dst_f->mem[i].memory,
                 .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT_KHR,
             };
             VkSemaphoreGetFdInfoKHR sem_export = {
@@ -3619,10 +3614,10 @@ static int vulkan_map_to_drm(AVHWFramesContext *hwfc, AVFrame *dst,
         goto end;
     }
 
-    for (int i = 0; (i < planes) && (f->mem[i]); i++) {
+    for (int i = 0; (i < planes) && (f->mem[i].memory); i++) {
         VkMemoryGetFdInfoKHR export_info = {
             .sType      = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR,
-            .memory     = f->mem[i],
+            .memory     = f->mem[i].memory,
             .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT,
         };
 
@@ -3666,7 +3661,7 @@ static int vulkan_map_to_drm(AVHWFramesContext *hwfc, AVFrame *dst,
         drm_desc->layers[i].planes[0].pitch  = layout.rowPitch;
 
         if (hwfctx->flags & AV_VK_FRAME_FLAG_CONTIGUOUS_MEMORY)
-            drm_desc->layers[i].planes[0].offset += f->offset[i];
+            drm_desc->layers[i].planes[0].offset += f->mem[i].offset;
     }
 
     dst->width   = src->width;

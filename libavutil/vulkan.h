@@ -428,6 +428,9 @@ int ff_vk_alloc_mem(FFVulkanContext *s, VkMemoryRequirements *req,
                     VkMemoryPropertyFlagBits req_flags, void *alloc_extension,
                     VkMemoryPropertyFlagBits *mem_flags, AVVulkanDeviceMemory *mem);
 void ff_vk_free_mem(FFVulkanContext *s, const AVVulkanDeviceMemory *mem);
+int ff_vk_map_mem(FFVulkanContext *s, const AVVulkanDeviceMemory *mem,
+                  size_t size, void **data);
+void ff_vk_unmap_mem(FFVulkanContext *s, const AVVulkanDeviceMemory *mem);
 int ff_vk_create_buf(FFVulkanContext *s, FFVkBuffer *buf, size_t size,
                      void *pNext, void *alloc_pNext,
                      VkBufferUsageFlags usage, VkMemoryPropertyFlagBits flags);
