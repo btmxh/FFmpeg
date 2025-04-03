@@ -4,6 +4,16 @@ FFmpeg README
 FFmpeg is a collection of libraries and tools to process multimedia content
 such as audio, video, subtitles and related metadata.
 
+## vma fork
+
+This fork add support for custom on-device Vulkan memory allocation for
+integration with libraries such as [Vulkan Memory
+Allocator](https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator).
+
+Current state: extremely experimental, might not even compile if some features
+are enabled. Expect export to not work properly. Modified code might not be
+formatted properly.
+
 ## Libraries
 
 * `libavcodec` provides implementation of a wider range of codecs.
